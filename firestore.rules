@@ -1,0 +1,15 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Pere andmetele pääseb ligi ainult siis, kui tead pikka juhuslikku pere koodi.
+    // Peresid ei saa loetleda ega otsida.
+    match /families/{code}/members/{memberId} {
+      allow read, write: if code.size() >= 20 && code.matches('^[a-z0-9]+$');
+
+      // Saadetud teavituste logi: ainult igapäevane kontroll (serveri võtmega).
+      match /sent/{epId} {
+        allow read, write: if false;
+      }
+    }
+  }
+}
