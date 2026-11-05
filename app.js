@@ -477,7 +477,7 @@ async function renderPush(box) {
   const on = sub && Notification.permission === 'granted' && subs[key];
 
   if (on) {
-    box.innerHTML = `<p class="status on">Sees sellel seadmel. Teavitus tuleb uue osa ilmumise päeva hommikul.</p>
+    box.innerHTML = `<p class="status on">Sees sellel seadmel. Teavitus tuleb kuni tund pärast uue osa ilmumist.</p>
       <button class="btn ghost" id="test">Saada proovi-teavitus</button>
       <button class="btn danger" id="off">Lülita teavitused välja</button>`;
     box.querySelector('#test').onclick = async () => {
