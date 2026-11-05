@@ -1,11 +1,11 @@
-// Igapäevane kontroll: vaatab kõigi pereliikmete sarjad läbi ja saadab teavituse,
-// kui mõni osa ilmub järgmise ööpäeva jooksul (või ilmus viimase 12 tunni jooksul).
+// Tunnipõhine kontroll: vaatab kõigi pereliikmete sarjad läbi ja saadab teavituse,
+// kui mõni osa on ilmunud viimase 6 tunni jooksul (iga osa kohta üks kord).
 import admin from 'firebase-admin';
 import webpush from 'web-push';
 
 const TZ = 'Europe/Tallinn';
-const BEFORE = 12 * 3600e3;
-const AFTER = 24 * 3600e3;
+const BEFORE = 6 * 3600e3; // varu juhuks, kui GitHub mõne käivituse vahele jätab
+const AFTER = 0;           // teavitus alles pärast ilmumist
 const now = Date.now();
 
 admin.initializeApp({ credential: admin.credential.cert(JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT)) });
@@ -33,19 +33,14 @@ async function getShow(id) {
 }
 
 const epTime = (ep) => ep.airstamp ? Date.parse(ep.airstamp) : ep.airdate ? Date.parse(ep.airdate + 'T12:00:00Z') : NaN;
-const tallinnDate = (t) => new Date(t).toLocaleDateString('sv-SE', { timeZone: TZ });
 const tallinnTime = (t) => new Date(t).toLocaleTimeString('et-EE', { timeZone: TZ, hour: '2-digit', minute: '2-digit' });
 
 function message(show, ep, t) {
-  const today = tallinnDate(now);
-  const tomorrow = tallinnDate(now + 24 * 3600e3);
-  const d = tallinnDate(t);
-  let when = d === today ? (t < now ? 'ilmus' : 'ilmub täna') : d === tomorrow ? 'ilmub homme' : 'ilmus';
-  if (ep.airtime && t > now) when += ' kell ' + tallinnTime(t);
   const code = `${ep.season}. hooaeg, ${ep.number != null ? ep.number + '. osa' : 'eriosa'}`;
   const title = ep.number === 1 ? `${show.name}: uus hooaeg!` : show.name;
   const where = show.network?.name || show.webChannel?.name;
-  const body = `${code}${ep.name ? ' «' + ep.name + '»' : ''} ${when}${where ? ' (' + where + ')' : ''}.`;
+  const at = ep.airtime ? ` (ilmus kell ${tallinnTime(t)}${where ? ', ' + where : ''})` : where ? ` (${where})` : '';
+  const body = `${code}${ep.name ? ' «' + ep.name + '»' : ''} on väljas${at}.`;
   return { title, body, tag: 'ep-' + ep.id, url: './' };
 }
 
