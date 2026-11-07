@@ -523,6 +523,11 @@ async function openSettings() {
   const bg = sheet(`
     <h2>${esc(S.member.name)}</h2><p class="sub">Jälgib ${(S.member.shows || []).length} sarja</p>
     <h3>Teavitused</h3><div id="push"><p class="status">Kontrollin…</p></div>
+    <h3>Kujundus</h3>
+    <div class="seg" id="theme">
+      <button data-t="auto">Automaatne</button><button data-t="light">Hele</button><button data-t="dark">Tume</button>
+    </div>
+    <p class="sub" style="margin-top:8px">Automaatne järgib iPhone'i seadet.</p>
     <h3>Pere</h3><div class="fam" id="fam"></div>
     <p class="sub">Pere kood (jaga ainult pereliikmetega):</p>
     <div class="code-box">${esc(fmtCode(S.family))}</div>
@@ -531,6 +536,18 @@ async function openSettings() {
     <button class="btn ghost" id="switch">Vaheta profiili</button>
     <button class="btn danger" id="leave">Lahku perest sellel seadmel</button>`);
   const $ = (s) => bg.querySelector(s);
+
+  let cur = 'auto';
+  try { cur = localStorage.getItem('theme') || 'auto'; } catch {}
+  const segBtns = bg.querySelectorAll('#theme button');
+  const markSeg = () => segBtns.forEach((b) => b.classList.toggle('on', b.dataset.t === cur));
+  markSeg();
+  segBtns.forEach((b) => (b.onclick = () => {
+    cur = b.dataset.t;
+    try { if (cur === 'auto') localStorage.removeItem('theme'); else localStorage.setItem('theme', cur); } catch {}
+    if (window.__applyTheme) window.__applyTheme();
+    markSeg();
+  }));
 
   api.listMembers().then((list) => {
     $('#fam').innerHTML = list.map((m) => `<span class="${m.id === S.memberId ? 'me' : ''}">${esc(m.name)}</span>`).join('');

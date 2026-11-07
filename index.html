@@ -5,8 +5,23 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Sarjakell</title>
   <meta name="description" content="Pere seriaalide märkmik, mis teavitab uute osade ilmumisest.">
-  <meta name="theme-color" content="#0e1116" media="(prefers-color-scheme: dark)">
-  <meta name="theme-color" content="#f5f3ef" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#0e1116">
+  <script>
+    (function () {
+      var mq = window.matchMedia('(prefers-color-scheme: light)');
+      function apply() {
+        var p = 'auto';
+        try { p = localStorage.getItem('theme') || 'auto'; } catch (e) {}
+        var t = p === 'light' || p === 'dark' ? p : (mq.matches ? 'light' : 'dark');
+        document.documentElement.setAttribute('data-theme', t);
+        var m = document.querySelector('meta[name=theme-color]');
+        if (m) m.setAttribute('content', t === 'light' ? '#f5f3ef' : '#0e1116');
+      }
+      window.__applyTheme = apply;
+      apply();
+      if (mq.addEventListener) mq.addEventListener('change', apply);
+    })();
+  </script>
   <meta name="color-scheme" content="light dark">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
