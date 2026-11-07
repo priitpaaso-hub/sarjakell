@@ -21,9 +21,8 @@
   color-scheme: dark;
 }
 
-/* Hele kujundus: järgib iPhone'i seadet (Hele / Tume / Automaatne) */
-@media (prefers-color-scheme: light) {
-  :root {
+/* Hele kujundus: data-theme määrab index.html skript (Automaatne / Hele / Tume) */
+:root[data-theme="light"] {
     --bg: #f5f3ef;
     --surface: #ffffff;
     --surface-2: #eeebe5;
@@ -36,21 +35,26 @@
     --gold: #a86f00;
     --ok: #1a8f5a;
     --danger: #cf3f3f;
+    --topbar: rgba(245,243,239,.94);
     --tabbar: rgba(255,255,255,.94);
     --gold-bg: rgba(214,150,0,.12);
     --gold-line: rgba(214,150,0,.45);
     color-scheme: light;
-  }
-  /* Ülemine riba jääb tumedaks, et iPhone'i kellaaeg ja aku oleksid loetavad */
-  .top { color: #f2efe9; border-bottom-color: #0e1116; }
-  .top .avatar { background: #212734; border-color: #2a3140; color: #ffd166; }
-  body::before { content: ""; position: fixed; top: 0; left: 0; right: 0; height: env(safe-area-inset-top, 0px); background: #0e1116; z-index: 50; }
-  .ep, .later, .card, .member, .eps, .search input, .field { box-shadow: 0 1px 2px rgba(30,25,15,.05); }
-  .sheet-bg { background: rgba(20,22,28,.45); }
-  .eps { background: var(--surface); }
-  .code-box { background: var(--surface-2); }
-  .poster.ph { background: var(--surface-2); }
 }
+[data-theme="light"] :is(.ep, .later, .card, .member, .eps, .search input, .field) { box-shadow: 0 1px 2px rgba(30,25,15,.05); }
+[data-theme="light"] .sheet-bg { background: rgba(20,22,28,.45); }
+[data-theme="light"] .eps { background: var(--surface); }
+[data-theme="light"] .code-box { background: var(--surface-2); }
+[data-theme="light"] .poster.ph { background: var(--surface-2); }
+
+/* iPhone'i kellaaja riba: värv järgib telefoni seadet, et kell ja aku oleksid alati loetavad */
+body::before { content: ""; position: fixed; top: 0; left: 0; right: 0; height: env(safe-area-inset-top, 0px); background: #0e1116; z-index: 50; pointer-events: none; }
+@media (prefers-color-scheme: light) { body::before { background: #f5f3ef; } }
+
+/* Kujunduse valik */
+.seg { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; padding: 4px; background: var(--surface-2); border-radius: 12px; }
+.seg button { padding: 10px 4px; border-radius: 9px; font-size: 14px; font-weight: 600; color: var(--muted); }
+.seg button.on { background: var(--surface); color: var(--text); box-shadow: 0 1px 3px rgba(0,0,0,.18); }
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 html, body { margin: 0; background: var(--bg); color: var(--text); }
 body {
