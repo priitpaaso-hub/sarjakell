@@ -115,9 +115,12 @@ function dayLabel(d) {
   const t = new Date(); const tm = new Date(t); tm.setDate(t.getDate() + 1);
   if (dayKey(d) === dayKey(t)) return 'Täna';
   if (dayKey(d) === dayKey(tm)) return 'Homme';
+  const y = new Date(t); y.setDate(t.getDate() - 1);
+  if (dayKey(d) === dayKey(y)) return 'Eile';
   const s = d.toLocaleDateString('et-EE', { weekday: 'long', day: 'numeric', month: 'long' });
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
+const shortDate = (d) => d.toLocaleDateString('et-EE', { weekday: 'short', day: 'numeric', month: 'short' });
 const timeStr = (ep, d) => (ep.airtime ? d.toLocaleTimeString('et-EE', { hour: '2-digit', minute: '2-digit' }) : '');
 const epCode = (ep) => `${ep.season}. hooaeg · ${ep.number != null ? ep.number + '. osa' : 'eriosa'}`;
 const channel = (sh) => sh.network?.name || sh.webChannel?.name || '';
@@ -287,22 +290,38 @@ async function viewUpcoming(v) {
   if (token !== upToken || S.tab !== 'upcoming') return;
 
   const start = new Date(); start.setHours(0, 0, 0, 0);
-  const items = []; const later = [];
+  const weekAgo = new Date(start); weekAgo.setDate(start.getDate() - 7);
+  const items = []; const later = []; const recent = [];
   res.forEach((r, i) => {
     if (r.status !== 'fulfilled') { later.push({ name: shows[i].name, note: 'andmed ei laadinud' }); return; }
     const sh = r.value;
-    const cand = [sh._embedded?.previousepisode, sh._embedded?.nextepisode].filter(Boolean)
-      .map((ep) => ({ ep, d: epDate(ep) })).filter((x) => x.d && x.d >= start);
+    const all = [sh._embedded?.previousepisode, sh._embedded?.nextepisode].filter(Boolean)
+      .map((ep) => ({ ep, d: epDate(ep) })).filter((x) => x.d);
     const seen = new Set();
-    const uniq = cand.filter((x) => !seen.has(x.ep.id) && seen.add(x.ep.id));
-    if (uniq.length) uniq.forEach((x) => items.push({ sh, ...x }));
-    else later.push({ name: sh.name, note: sh.status === 'Ended' ? 'lõppenud' : 'kuupäev teadmata' });
+    const uniq = all.filter((x) => !seen.has(x.ep.id) && seen.add(x.ep.id));
+    const up = uniq.filter((x) => x.d >= start);
+    const past = uniq.filter((x) => x.d < start && x.d >= weekAgo);
+    up.forEach((x) => items.push({ sh, ...x }));
+    past.forEach((x) => recent.push({ sh, ...x }));
+    if (!up.length && !past.length) later.push({ name: sh.name, note: sh.status === 'Ended' ? 'lõppenud' : 'kuupäev teadmata' });
   });
   items.sort((a, b) => a.d - b.d);
+  recent.sort((a, b) => b.d - a.d);
 
   const groups = new Map();
   items.forEach((it) => { const k = dayKey(it.d); if (!groups.has(k)) groups.set(k, []); groups.get(k).push(it); });
   let html = '';
+  if (recent.length) {
+    html += '<h2 class="section">Viimati ilmunud</h2>';
+    html += recent.map(({ sh, ep, d }) => `
+      <article class="ep past" data-id="${sh.id}">
+        ${poster(sh.image?.medium, sh.name)}
+        <div><div class="ep-show">${esc(sh.name)}</div>
+          <div class="ep-meta">${esc(epCode(ep))}</div>
+          ${ep.name ? `<div class="ep-title">${esc(ep.name)}</div>` : ''}</div>
+        <div class="ep-when">${esc(dayLabel(d) === 'Eile' ? 'Eile' : shortDate(d))}<small>${esc(channel(sh))}</small></div>
+      </article>`).join('');
+  }
   for (const [, list] of groups) {
     const label = dayLabel(list[0].d);
     html += `<h2 class="section ${label === 'Täna' ? 'today' : ''}">${esc(label)}</h2>`;
@@ -385,31 +404,102 @@ async function toggleShow(sh) {
 function sheet(html) {
   const bg = document.createElement('div');
   bg.className = 'sheet-bg';
-  bg.innerHTML = `<div class="sheet" role="dialog" aria-modal="true"><div class="grab"></div>${html}</div>`;
-  bg.addEventListener('click', (e) => { if (e.target === bg) bg.remove(); });
+  bg.innerHTML = `<div class="sheet" role="dialog" aria-modal="true">
+    <div class="sheet-head"><div class="grab"></div><button class="x" aria-label="Sulge">\u00d7</button></div>
+    <div class="sheet-body">${html}</div></div>`;
+  const sh = bg.querySelector('.sheet');
+  const body = bg.querySelector('.sheet-body');
+  const close = () => {
+    sh.style.transition = 'transform .2s ease-in'; sh.style.transform = 'translateY(100%)';
+    bg.style.transition = 'opacity .2s'; bg.style.opacity = '0';
+    setTimeout(() => bg.remove(), 200);
+  };
+  bg.close = close;
+  bg.addEventListener('click', (e) => { if (e.target === bg) close(); });
+  bg.querySelector('.x').onclick = close;
+  // allatõmbamine: päisest alati, sisust siis, kui sisu on üleval
+  let y0 = null, dy = 0, fromHead = false;
+  sh.addEventListener('touchstart', (e) => {
+    fromHead = !!e.target.closest('.sheet-head');
+    if (!fromHead && body.scrollTop > 0) { y0 = null; return; }
+    y0 = e.touches[0].clientY; dy = 0; sh.style.transition = 'none';
+  }, { passive: true });
+  sh.addEventListener('touchmove', (e) => {
+    if (y0 === null) return;
+    dy = e.touches[0].clientY - y0;
+    if (dy <= 0) { sh.style.transform = ''; if (!fromHead) y0 = null; return; }
+    if (!fromHead && body.scrollTop > 0) { y0 = null; return; }
+    e.preventDefault();
+    sh.style.transform = `translateY(${dy}px)`;
+  }, { passive: false });
+  sh.addEventListener('touchend', () => {
+    if (y0 === null) return;
+    y0 = null;
+    if (dy > 90) close();
+    else { sh.style.transition = 'transform .2s ease-out'; sh.style.transform = ''; }
+  });
   document.body.appendChild(bg);
   return bg;
 }
 
+function seasonList(sh, eps) {
+  if (!eps || !eps.length) return '';
+  const nx = sh._embedded?.nextepisode, pv = sh._embedded?.previousepisode;
+  const season = nx?.season ?? pv?.season ?? Math.max(...eps.map((e) => e.season));
+  const list = eps.filter((e) => e.season === season).sort((a, b) => (a.number ?? 999) - (b.number ?? 999));
+  if (!list.length) return '';
+  const now = new Date();
+  return `<h3>${season}. hooaeg</h3><div class="eps">${list.map((ep) => {
+    const d = epDate(ep);
+    const aired = d && d <= now;
+    const isNext = nx && ep.season === nx.season && ep.number === nx.number;
+    const when = d ? `${shortDate(d)}${ep.airtime ? ' ' + timeStr(ep, d) : ''}` : 'kuupäev teadmata';
+    const full = d ? `${dayLabel(d)}${ep.airtime ? ' kell ' + timeStr(ep, d) : ''}` : 'Kuupäev teadmata';
+    const sum = strip(ep.summary).trim();
+    const img = ep.image?.medium || ep.image?.original;
+    return `<div class="epwrap">
+      <button class="eprow ${aired ? 'aired' : ''} ${isNext ? 'next' : ''}" aria-expanded="false">
+        <span class="no">${ep.number ?? '·'}</span>
+        <span class="nm">${esc(ep.name || '')}</span>
+        <span class="dt">${aired ? '<i>\u2713</i> ' : ''}${esc(when)}</span></button>
+      <div class="epdet" hidden>
+        ${img ? `<img class="still" src="${esc(img)}" alt="" loading="lazy">` : ''}
+        <p class="epwhen">${esc(full)}${ep.runtime ? ' · ' + ep.runtime + ' min' : ''}</p>
+        <p class="epsum">${sum ? esc(sum) : '<span class="none">Kirjeldus puudub.</span>'}</p>
+      </div></div>`;
+  }).join('')}</div>`;
+}
+
 async function openShow(id) {
   const bg = sheet('<div class="loading">Laen…</div>');
-  const box = bg.querySelector('.sheet');
+  const box = bg.querySelector('.sheet-body');
   try {
-    const sh = await tv(showPath(id));
+    const [sh, eps] = await Promise.all([
+      tv(showPath(id)),
+      tv(`/shows/${id}/episodes`).catch(() => null)
+    ]);
     const nx = sh._embedded?.nextepisode;
     const following = (S.member.shows || []).some((s) => s.id === id);
     let next = 'Järgmise osa kuupäev pole teada.';
     if (nx) { const d = epDate(nx); next = `${dayLabel(d)}${timeStr(nx, d) ? ' kell ' + timeStr(nx, d) : ''}: ${epCode(nx)}${nx.name ? ', ' + nx.name : ''}`; }
     if (sh.status === 'Ended') next = 'Sari on lõppenud.';
-    box.innerHTML = `<div class="grab"></div>
+    box.innerHTML = `
       <div class="detail-top">${poster(sh.image?.medium, sh.name)}<div>
         <h2>${esc(sh.name)}</h2>
         <p class="sub">${esc([sh.premiered?.slice(0, 4), channel(sh), statusEt(sh.status)].filter(Boolean).join(' · '))}</p>
         <p class="status">${esc(next)}</p></div></div>
-      ${sh.summary ? `<p class="summary">${esc(strip(sh.summary))}</p>` : ''}
+      ${seasonList(sh, eps)}
+      ${sh.summary ? `<h3>Sisu</h3><p class="summary">${esc(strip(sh.summary))}</p>` : ''}
       <button class="btn ${following ? 'danger' : ''}" id="tg">${following ? 'Lõpeta jälgimine' : 'Hakka jälgima'}</button>`;
-    box.querySelector('#tg').onclick = () => { toggleShow(sh); bg.remove(); };
-  } catch { box.innerHTML = '<div class="grab"></div><p class="hint">Andmeid ei õnnestunud laadida.</p>'; }
+    box.querySelector('#tg').onclick = () => { toggleShow(sh); bg.close(); };
+    box.querySelectorAll('.eprow').forEach((b) => (b.onclick = () => {
+      const det = b.nextElementSibling;
+      const open = det.hidden;
+      det.hidden = !open;
+      b.setAttribute('aria-expanded', String(open));
+      b.parentElement.classList.toggle('open', open);
+    }));
+  } catch { box.innerHTML = '<p class="hint">Andmeid ei õnnestunud laadida.</p>'; }
 }
 
 /* ---------- seaded ja teavitused ---------- */
@@ -515,7 +605,7 @@ async function renderPush(box) {
 const iso = (dDays, hh = 21, mm = 0) => { const d = new Date(); d.setDate(d.getDate() + dDays); d.setHours(hh, mm, 0, 0); return d.toISOString(); };
 const DEMO_SHOWS = [
   { id: 1, name: 'Põhjaranniku saladused', network: { name: 'ETV' }, status: 'Running', premiered: '2024-03-01', image: null,
-    summary: '<p>Demo: kriminaalsari väikesest rannakülast.</p>', _embedded: { nextepisode: { id: 11, season: 2, number: 5, name: 'Tormi silm', airtime: '21:30', airstamp: iso(0, 21, 30) } } },
+    summary: '<p>Demo: kriminaalsari väikesest rannakülast.</p>', _embedded: { previousepisode: { id: 10, season: 2, number: 4, name: 'Vaikus', airtime: '21:30', airstamp: iso(-1, 21, 30) }, nextepisode: { id: 11, season: 2, number: 5, name: 'Tormi silm', airtime: '21:30', airstamp: iso(0, 21, 30) } } },
   { id: 2, name: 'Orbiit', webChannel: { name: 'Netflix' }, status: 'Running', premiered: '2025-01-10', image: null,
     summary: '<p>Demo: ulmesari kosmosejaamast.</p>', _embedded: { nextepisode: { id: 21, season: 3, number: 1, name: 'Uus algus', airtime: '', airstamp: iso(1, 10) } } },
   { id: 3, name: 'Köögisõjad', network: { name: 'TV3' }, status: 'Running', premiered: '2023-09-01', image: null,
@@ -525,6 +615,14 @@ const DEMO_SHOWS = [
 ];
 async function demoTv(path) {
   await sleep(150);
+  const e = path.match(/^\/shows\/(\d+)\/episodes/);
+  if (e) {
+    const sh = DEMO_SHOWS.find((x) => x.id === +e[1]); const nx = sh?._embedded?.nextepisode;
+    if (!nx) return [];
+    return Array.from({ length: 8 }, (_, i) => ({ id: 100 + i, season: nx.season, number: i + 1, name: i + 1 === nx.number ? nx.name : `Osa ${i + 1}`, airtime: nx.airtime, runtime: 52,
+      summary: i < 4 ? '<p>Demo: lühikirjeldus sellest, mis selles osas juhtub.</p>' : null,
+      airstamp: new Date(Date.parse(nx.airstamp) + (i + 1 - nx.number) * 7 * 864e5).toISOString() }));
+  }
   const m = path.match(/^\/shows\/(\d+)/);
   if (m) return DEMO_SHOWS.find((s) => s.id === +m[1]);
   if (path.startsWith('/search/shows')) return DEMO_SHOWS.slice(0, 3).map((show) => ({ show }));
